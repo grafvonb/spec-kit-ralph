@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Added backend-aware agent invocation with built-in `copilot` and `codex` profiles in both orchestrator scripts
+- Added `agent_backend` configuration and `SPECKIT_RALPH_AGENT_BACKEND` override
+- Simplified the default config template so most users only configure `agent_cli`
+- Updated docs and launcher guidance to describe generic agent CLI resolution instead of hard-coded Copilot-only checks
+- Relaxed extension tool requirements so runtime validation handles the configured agent CLI
+
 All notable changes to the Ralph Loop extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

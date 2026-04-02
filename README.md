@@ -7,7 +7,7 @@ Autonomous implementation loop for [spec-kit](https://github.com/github/spec-kit
 | Requirement | Why |
 |---|---|
 | [spec-kit](https://github.com/github/spec-kit) (`specify` CLI) | Extension host — provides project structure and task management |
-| [GitHub Copilot CLI](https://docs.github.com/en/copilot) (`copilot` binary in PATH) | Default agent CLI used to execute each iteration |
+| An agent CLI such as [GitHub Copilot CLI](https://docs.github.com/en/copilot) or Codex CLI (`copilot` or `codex` binary in PATH) | Agent used to execute each iteration |
 | [Git](https://git-scm.com/) | Version control — Ralph commits completed work units automatically |
 
 Your project must be initialized with `specify init` and have a feature branch checked out with a completed `tasks.md`.
@@ -31,13 +31,13 @@ specify extension list
 #   Commands: 2 | Hooks: 1 | Status: Enabled
 ```
 
-The installer copies a config template to `.specify/extensions/ralph/ralph-config.yml` and the iterate command to `.github/agents/speckit.ralph.iterate.agent.md`.
+The installer copies a config template to `.specify/extensions/ralph/ralph-config.yml`. Ralph then resolves the configured agent backend at runtime.
 
 ## Usage
 
 ### Path 1 — Agent Command
 
-Run inside a Copilot chat session:
+Run inside a supported agent chat session. The default and primary path remains Copilot.
 
 ```
 /speckit.ralph.run
@@ -92,6 +92,13 @@ max_iterations: 10
 agent_cli: "copilot"
 ```
 
+For most setups, only change `agent_cli`.
+
+- Leave `agent_cli: "copilot"` to use the default Copilot behavior
+- Set `agent_cli: "codex"` only if you want to use Codex instead
+
+Advanced note: if `agent_cli` points to a wrapper or renamed binary, Ralph still supports `agent_backend` as an override through config or `SPECKIT_RALPH_AGENT_BACKEND`.
+
 ### Configuration Precedence
 
 Settings are resolved from lowest to highest priority:
@@ -111,6 +118,7 @@ Settings are resolved from lowest to highest priority:
 | `SPECKIT_RALPH_MODEL` | AI model to use | `claude-sonnet-4.6` |
 | `SPECKIT_RALPH_MAX_ITERATIONS` | Maximum iterations before stopping | `10` |
 | `SPECKIT_RALPH_AGENT_CLI` | Agent CLI binary name or path | `copilot` |
+| `SPECKIT_RALPH_AGENT_BACKEND` | Advanced backend override for custom wrappers | `auto` |
 
 ```bash
 export SPECKIT_RALPH_MODEL="gpt-5.1"
@@ -135,7 +143,7 @@ export SPECKIT_RALPH_AGENT_CLI="copilot"
                   ▼
   ┌───────────────────────────────┐
   │  Spawn fresh agent process    │
-  │  copilot --agent speckit.ralph│
+  │  backend-specific invocation  │
   └──────────────┬────────────────┘
                  ▼
   ┌───────────────────────────────┐
@@ -154,11 +162,13 @@ export SPECKIT_RALPH_AGENT_CLI="copilot"
 
 ### Iteration Cycle
 
-1. The orchestrator spawns a **fresh** `copilot --agent speckit.ralph` process each iteration.
-2. The agent reads `tasks.md` to find the first incomplete work unit (phase, user story, or task group).
-3. It implements tasks within that single work unit, marks them `[x]` in `tasks.md`, and commits on completion.
-4. It appends an iteration entry to `progress.md` with files changed and lessons learned.
-5. Control returns to the orchestrator, which checks termination conditions and loops.
+1. The orchestrator spawns a **fresh** agent process each iteration.
+2. For `copilot`, Ralph invokes `copilot --agent speckit.ralph.iterate ...`.
+3. For `codex`, Ralph invokes `codex exec ...` and injects the `speckit.ralph.iterate` instructions into the prompt.
+4. The agent reads `tasks.md` to find the first incomplete work unit (phase, user story, or task group).
+5. It implements tasks within that single work unit, marks them `[x]` in `tasks.md`, and commits on completion.
+6. It appends an iteration entry to `progress.md` with files changed and lessons learned.
+7. Control returns to the orchestrator, which checks termination conditions and loops.
 
 ### Termination Conditions
 
@@ -182,6 +192,28 @@ To resume, simply re-run the command:
 
 Or re-run the script directly. The orchestrator reads the current checkbox state in `tasks.md` and skips completed tasks. The `progress.md` log gives the agent context from prior iterations.
 
+## Supported Agent Backends
+
+Ralph currently has built-in backend profiles for:
+
+- `copilot`: Uses `--agent speckit.ralph.iterate -p ... --model ... --yolo -s` invocation
+- `codex`: Uses `codex exec --full-auto --model ...` and embeds the `commands/iterate.md` instructions into the prompt
+
+The fork keeps `copilot` as the **default** configuration.
+
+Example Codex configuration:
+
+```yaml
+agent_cli: "codex"
+```
+
+Normally you do not need to set `agent_backend` yourself. `agent_backend: "auto"` infers the backend from the `agent_cli` basename:
+
+- `copilot` -> `copilot`
+- `codex` -> `codex`
+
+If `agent_cli` points at a wrapper or custom binary name, `agent_backend` lets you tell Ralph which built-in invocation style to use.
+
 ## Extension Structure
 
 ```
@@ -195,8 +227,6 @@ spec-kit-ralph/
 │   │   └── ralph-loop.ps1         # PowerShell orchestrator
 │   └── bash/
 │       └── ralph-loop.sh          # Bash orchestrator
-├── agents/
-│   └── speckit.ralph.agent.md     # Copilot agent profile
 ├── ralph-config.template.yml      # Config template
 ├── README.md
 ├── CHANGELOG.md

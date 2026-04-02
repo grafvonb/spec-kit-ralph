@@ -221,7 +221,11 @@ get_incomplete_task_count() {
         echo 0
         return
     fi
-    grep -c '\- \[ \]' "$path" 2>/dev/null || echo 0
+    awk '
+        BEGIN { count = 0 }
+        /^- \[ \]/ { count++ }
+        END { print count }
+    ' "$path"
 }
 
 initialize_progress_file() {

@@ -251,22 +251,35 @@ EOF
 resolve_agent_backend() {
     local configured_backend=$1
     local agent_cli=$2
+    local cli_name
 
     # Allow an explicit backend override for wrapper scripts or renamed binaries.
     if [[ -n "$configured_backend" && "$configured_backend" != "auto" ]]; then
-        echo "${configured_backend,,}"
+        lowercase_backend "$configured_backend"
         return
     fi
 
-    local cli_name
     cli_name=$(basename "$agent_cli")
-    cli_name=${cli_name,,}
+    cli_name=$(lowercase_backend "$cli_name")
 
     case "$cli_name" in
         copilot) echo "copilot" ;;
         codex) echo "codex" ;;
         *) echo "unknown" ;;
     esac
+}
+
+lowercase_backend() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+capitalize_backend_label() {
+    local value=$1
+    local first_char rest
+
+    first_char=$(printf '%s' "$value" | cut -c1 | tr '[:lower:]' '[:upper:]')
+    rest=$(printf '%s' "$value" | cut -c2-)
+    printf '%s%s' "$first_char" "$rest"
 }
 
 build_iteration_prompt() {
@@ -293,17 +306,16 @@ build_agent_command() {
     local backend=$1
     local model=$2
     local prompt=$3
-    local -n command_ref=$4
 
     # Map Ralph's generic loop contract onto each supported CLI's invocation shape.
     case "$backend" in
         copilot)
-            command_ref=("$AGENT_CLI" --agent speckit.ralph.iterate -p "$prompt" --model "$model" --yolo -s)
+            AGENT_COMMAND=("$AGENT_CLI" --agent speckit.ralph.iterate -p "$prompt" --model "$model" --yolo -s)
             ;;
         codex)
             local full_prompt
             full_prompt=$(build_iteration_prompt "$prompt")
-            command_ref=("$AGENT_CLI" exec --full-auto --model "$model" "$full_prompt")
+            AGENT_COMMAND=("$AGENT_CLI" exec --full-auto --model "$model" "$full_prompt")
             ;;
         *)
             echo "Error: Unsupported Ralph agent backend '$backend' for CLI '$AGENT_CLI'." >&2
@@ -321,7 +333,7 @@ invoke_agent_iteration() {
 
     # Simple prompt - backend-specific wrappers provide the full Ralph instructions when needed
     local prompt="Iteration $iteration - Complete one work unit from tasks.md"
-    local command=()
+    local backend_label
 
     # Only show debug info when verbose
     if [[ "$VERBOSE" == "true" ]]; then
@@ -331,7 +343,7 @@ invoke_agent_iteration() {
         echo -e "\033[35mDEBUG: AgentBackend = $backend\033[0m" >&2
     fi
 
-    if ! build_agent_command "$backend" "$model" "$prompt" command; then
+    if ! build_agent_command "$backend" "$model" "$prompt"; then
         return 1
     fi
 
@@ -347,7 +359,8 @@ invoke_agent_iteration() {
 
     # Always stream agent output in real-time so user can see what the agent is doing
     echo "" >&2
-    echo -e "\033[36m--- ${backend^} Agent Output ---\033[0m" >&2
+    backend_label=$(capitalize_backend_label "$backend")
+    echo -e "\033[36m--- ${backend_label} Agent Output ---\033[0m" >&2
 
     local exit_code=0
     local output_lines=()
@@ -356,7 +369,7 @@ invoke_agent_iteration() {
     while IFS= read -r line; do
         echo "$line" >&2
         output_lines+=("$line")
-    done < <("${command[@]}" 2>&1) || exit_code=$?
+    done < <("${AGENT_COMMAND[@]}" 2>&1) || exit_code=$?
 
     echo -e "\033[36m--- End Agent Output ---\033[0m" >&2
     echo "" >&2

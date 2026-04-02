@@ -394,7 +394,21 @@ invoke_agent_iteration() {
 
 test_completion_signal() {
     local output=$1
-    echo "$output" | grep -q '<promise>COMPLETE</promise>'
+    # Only accept the explicit completion marker as its own full line.
+    # This avoids terminating the loop because the marker appeared inside
+    # quoted output, diff text, or explanatory prose from the agent.
+    echo "$output" | grep -qx '<promise>COMPLETE</promise>'
+}
+
+list_incomplete_task_ids() {
+    local path=$1
+    if [[ ! -f "$path" ]]; then
+        return
+    fi
+
+    # Keep the extraction narrow and format-driven so warnings remain stable
+    # even if task descriptions change. We only need the task IDs here.
+    grep '^- \[ \] T[0-9]\{3\}\b' "$path" 2>/dev/null | sed -E 's/^- \[ \] (T[0-9]{3}).*/\1/'
 }
 
 print_summary() {
@@ -482,13 +496,6 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
     exit_code=$?
     set -e
 
-    # Check for completion signal
-    if test_completion_signal "$output"; then
-        print_status "$iteration" "success" "COMPLETE signal received"
-        completed=true
-        break
-    fi
-
     # Check exit code
     if [[ $exit_code -ne 0 ]]; then
         ((consecutive_failures++))
@@ -506,6 +513,33 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
 
     # Check remaining tasks
     remaining_tasks=$(get_incomplete_task_count "$TASKS_PATH")
+
+    # Important orchestration guard:
+    # the agent is instructed to emit COMPLETE only when all tasks are done,
+    # but the loop must still verify that claim against tasks.md.
+    #
+    # This prevents the loop from stopping on a premature completion marker
+    # while validation, polish, or any other unchecked tasks still remain.
+    # Treat tasks.md as the source of truth and only terminate when both
+    # signals agree.
+    if test_completion_signal "$output"; then
+        if [[ "$remaining_tasks" -eq 0 ]]; then
+            print_status "$iteration" "success" "COMPLETE signal received"
+            completed=true
+            break
+        fi
+
+        # Surface the still-open task IDs so the next iteration has an obvious
+        # target and the operator can immediately see why the loop continued.
+        incomplete_task_ids=$(list_incomplete_task_ids "$TASKS_PATH" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+        print_status "$iteration" "skipped" "Ignored premature COMPLETE signal"
+        if [[ -n "$incomplete_task_ids" ]]; then
+            echo -e "\033[33mAgent reported COMPLETE but $remaining_tasks task(s) remain: $incomplete_task_ids\033[0m"
+        else
+            echo -e "\033[33mAgent reported COMPLETE but $remaining_tasks task(s) remain.\033[0m"
+        fi
+    fi
+
     if [[ "$remaining_tasks" -eq 0 ]]; then
         echo -e "\033[32mAll tasks complete!\033[0m"
         completed=true

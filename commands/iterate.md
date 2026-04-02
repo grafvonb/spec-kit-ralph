@@ -12,11 +12,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Scope Constraint
 
-**CRITICAL**: Complete AT MOST ONE user story in this iteration.
+**CRITICAL**: Complete AT MOST ONE work unit in this iteration.
 
-- If you cannot complete an entire user story, complete as many tasks as you can
+- A work unit is the first incomplete user story or, if no user story tasks remain, the first incomplete final polish/cross-cutting section
+- If you cannot complete an entire work unit, complete as many tasks as you can
 - Partial progress is fine -- uncompleted tasks will be handled in subsequent iterations
-- DO NOT start a second user story even if you have time remaining
+- DO NOT start a second work unit even if you have time remaining
 - This prevents context rot and keeps changes reviewable
 
 ## Outline
@@ -40,8 +41,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read `FEATURE_DIR/research.md` for technical decisions and constraints
 
 3. **Identify scope**:
-   - Find the FIRST user story section with incomplete tasks (`- [ ]`)
-   - Work ONLY on tasks within that single user story
+   - Find the FIRST work unit with incomplete tasks (`- [ ]`)
+   - Prefer the first incomplete user story section
+   - If no user story tasks remain, use the first incomplete final polish/cross-cutting section
+   - Work ONLY on tasks within that single work unit
    - Example: If "US-001: Initialize Ralph Command" has incomplete tasks, work only on US-001
 
 4. **Implement tasks**:
@@ -50,16 +53,18 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Run quality checks after each task (typecheck, lint, test as appropriate)
    - Mark each completed task by changing `[ ]` to `[x]` in tasks.md
 
-5. **Commit on user story completion**:
-   - When ALL tasks in the current user story are complete (`[x]`), create a commit:
+5. **Commit on work unit completion**:
+   - When ALL tasks in the current work unit are complete (`[x]`), create a commit, even if the final changes are only task tracking, progress logging, documentation, or validation updates:
 
      ```sh
      git add -A
-     git commit -m "feat(<feature-name>): <user story title>"
+     git commit -m "feat(<feature-name>): <work unit title>"
      ```
 
    - Example: `git commit -m "feat(001-ralph-loop-implement): US-001 Initialize Ralph Command"`
+   - Example: `git commit -m "chore(001-ralph-loop-implement): complete final polish"`
    - If only partial progress, NO commit -- let the next iteration continue
+   - Before outputting `<promise>COMPLETE</promise>`, ensure there are no intended tracked changes left uncommitted for the just-finished work unit
 
 6. **Update progress log**:
    - Create or append to `FEATURE_DIR/progress.md`
@@ -73,12 +78,12 @@ APPEND to FEATURE_DIR/progress.md:
 ```markdown
 ---
 ## Iteration [N] - [Current Date/Time]
-**User Story**: [US-XXX title or "Partial progress on US-XXX"]
+**User Story**: [US-XXX title, final polish section title, or "Partial progress on ..."]
 **Tasks Completed**: 
 - [x] Task ID: description
 - [x] Task ID: description
 **Tasks Remaining in Story**: [count] or "None - story complete"
-**Commit**: [commit hash if story completed, or "No commit - partial progress"]
+**Commit**: [commit hash if work unit completed, or "No commit - partial progress"]
 **Files Changed**: 
 - path/to/file.ext
 **Learnings**:
@@ -121,6 +126,6 @@ Follow the patterns established in the codebase:
 | --------- | ----------------- |
 | User story unclear | Ask for clarification in progress entry, mark tasks as blocked |
 | Tests fail | Report failure, do not mark task complete, no commit |
-| Cannot complete story | Report partial progress, commit only if all completed tasks form coherent unit |
-| All tasks done | Commit final story, output `<promise>COMPLETE</promise>` |
+| Cannot complete work unit | Report partial progress, commit only if all completed tasks form coherent unit |
+| All tasks done | Commit the final work unit, then output `<promise>COMPLETE</promise>` |
 | Dependencies missing | Note in progress file, skip to next available task |

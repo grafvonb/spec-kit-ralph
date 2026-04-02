@@ -3,8 +3,8 @@
     Ralph loop orchestrator for autonomous implementation.
 
 .DESCRIPTION
-    Executes GitHub Copilot CLI in a controlled loop, processing tasks from tasks.md.
-    Each iteration spawns a fresh agent context with the speckit.ralph profile.
+    Executes a supported agent CLI in a controlled loop, processing tasks from tasks.md.
+    Each iteration spawns a fresh agent context with the Ralph iteration instructions.
     
     The loop terminates when:
     - Agent outputs <promise>COMPLETE</promise>
@@ -37,6 +37,9 @@
 .PARAMETER AgentCli
     Path or name of the agent CLI binary (default: copilot)
 
+.PARAMETER AgentBackend
+    Agent backend profile to use (auto, copilot, codex). Defaults to auto-detect from AgentCli.
+
 .PARAMETER DetailedOutput
     Show detailed iteration output
 
@@ -63,6 +66,9 @@ param(
     
     [Parameter(Mandatory = $false)]
     [string]$AgentCli = "copilot",
+
+    [Parameter(Mandatory = $false)]
+    [string]$AgentBackend = "auto",
     
     [Parameter(Mandatory = $false)]
     [string]$WorkingDirectory = "",
@@ -92,6 +98,9 @@ $RepoRoot = $WorkingDirectory
 $TasksPath = [System.IO.Path]::GetFullPath($TasksPath)
 $SpecDir = [System.IO.Path]::GetFullPath($SpecDir)
 $ProgressPath = Join-Path $SpecDir "progress.md"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ExtensionRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "../.."))
+$IterateCommandPath = Join-Path $ExtensionRoot "commands/iterate.md"
 
 # Load config from extension config file
 function Read-RalphConfig {
@@ -130,6 +139,9 @@ if (-not $PSBoundParameters.ContainsKey('MaxIterations') -and $config.ContainsKe
 if (-not $PSBoundParameters.ContainsKey('AgentCli') -and $config.ContainsKey('agent_cli')) {
     $AgentCli = $config['agent_cli']
 }
+if (-not $PSBoundParameters.ContainsKey('AgentBackend') -and $config.ContainsKey('agent_backend')) {
+    $AgentBackend = $config['agent_backend']
+}
 
 # Environment variable overrides (higher priority than config, lower than explicit params)
 if (-not $PSBoundParameters.ContainsKey('Model') -and $env:SPECKIT_RALPH_MODEL) {
@@ -140,6 +152,9 @@ if (-not $PSBoundParameters.ContainsKey('MaxIterations') -and $env:SPECKIT_RALPH
 }
 if (-not $PSBoundParameters.ContainsKey('AgentCli') -and $env:SPECKIT_RALPH_AGENT_CLI) {
     $AgentCli = $env:SPECKIT_RALPH_AGENT_CLI
+}
+if (-not $PSBoundParameters.ContainsKey('AgentBackend') -and $env:SPECKIT_RALPH_AGENT_BACKEND) {
+    $AgentBackend = $env:SPECKIT_RALPH_AGENT_BACKEND
 }
 
 #region Helper Functions
@@ -231,25 +246,90 @@ Started: $timestamp
     }
 }
 
-function Invoke-CopilotIteration {
+function Resolve-AgentBackend {
+    param(
+        [string]$ConfiguredBackend,
+        [string]$CliPath
+    )
+
+    # Allow an explicit backend override for wrapper scripts or renamed binaries.
+    if ($ConfiguredBackend -and $ConfiguredBackend -ne "auto") {
+        return $ConfiguredBackend.ToLowerInvariant()
+    }
+
+    $cliName = [System.IO.Path]::GetFileName($CliPath).ToLowerInvariant()
+    switch ($cliName) {
+        "copilot" { return "copilot" }
+        "codex" { return "codex" }
+        default { return "unknown" }
+    }
+}
+
+function Get-IterationPrompt {
+    param([string]$Prompt)
+
+    # Codex needs the iterate instructions inline because it does not load named agents.
+    if (-not (Test-Path $IterateCommandPath)) {
+        return $Prompt
+    }
+
+    $instructions = Get-Content $IterateCommandPath -Raw
+    return @"
+You are executing the speckit.ralph.iterate workflow for this repository.
+Follow the instructions below exactly.
+
+$instructions
+
+Runtime input for `$ARGUMENTS:
+$Prompt
+"@
+}
+
+function Get-AgentCommandArguments {
+    param(
+        [string]$Backend,
+        [string]$Model,
+        [string]$Prompt
+    )
+
+    # Map Ralph's generic loop contract onto each supported CLI's invocation shape.
+    switch ($Backend) {
+        "copilot" {
+            return @("--agent", "speckit.ralph.iterate", "-p", $Prompt, "--model", $Model, "--yolo", "-s")
+        }
+        "codex" {
+            $fullPrompt = Get-IterationPrompt -Prompt $Prompt
+            return @("exec", "--full-auto", "--model", $Model, $fullPrompt)
+        }
+        default {
+            throw "Unsupported Ralph agent backend '$Backend' for CLI '$AgentCli'. Supported backends: copilot, codex."
+        }
+    }
+}
+
+function Invoke-AgentIteration {
     param(
         [string]$Model,
         [int]$Iteration,
         [string]$WorkDir,
+        [string]$Backend,
         [switch]$Verbose
     )
     
-    # Simple prompt - the speckit.ralph agent already knows to complete one work unit
+    # Simple prompt - backend-specific wrappers provide the full Ralph instructions when needed
     $prompt = "Iteration $Iteration - Complete one work unit from tasks.md"
+    $commandArgs = Get-AgentCommandArguments -Backend $Backend -Model $Model -Prompt $prompt
     
     # Only show debug info when verbose
     if ($Verbose) {
         Write-Host "DEBUG: Prompt = $prompt" -ForegroundColor Magenta
         Write-Host "DEBUG: WorkDir = $WorkDir" -ForegroundColor Magenta
+        Write-Host "DEBUG: AgentCli = $AgentCli" -ForegroundColor Magenta
+        Write-Host "DEBUG: AgentBackend = $Backend" -ForegroundColor Magenta
     }
     
     try {
-        # Change to working directory so copilot finds the correct agents
+        # Change to working directory before invoking the agent CLI
         $originalDir = Get-Location
         if ($WorkDir -and (Test-Path $WorkDir)) {
             Push-Location $WorkDir
@@ -258,22 +338,22 @@ function Invoke-CopilotIteration {
             }
         }
         
-        # Refresh PATH to ensure pwsh is available (copilot CLI requires PowerShell 7+)
+        # Refresh PATH to ensure shell-installed CLIs remain discoverable
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         
-        # Ensure UTF-8 so copilot output (em dashes, etc.) renders correctly
+        # Ensure UTF-8 so agent output renders correctly
         $prevOutputEncoding = $OutputEncoding
         $prevConsoleEncoding = [Console]::OutputEncoding
         $OutputEncoding = [System.Text.Encoding]::UTF8
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         
         try {
-            # Always stream copilot output in real-time so user can see what the agent is doing
+            # Always stream agent output in real-time so user can see what the agent is doing
             Write-Host ""
-            Write-Host "--- Copilot Agent Output ---" -ForegroundColor DarkCyan
+            $backendLabel = (Get-Culture).TextInfo.ToTitleCase($Backend)
+            Write-Host "--- $backendLabel Agent Output ---" -ForegroundColor DarkCyan
             $outputLines = @()
-            # Use speckit.ralph.iterate agent - it already knows to complete one work unit
-            & $AgentCli --agent speckit.ralph.iterate -p $prompt --model $Model --yolo -s 2>&1 | ForEach-Object {
+            & $AgentCli @commandArgs 2>&1 | ForEach-Object {
                 # Stderr lines arrive as ErrorRecord objects; extract the message string
                 $line = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { $_ }
                 Write-Host $line
@@ -293,11 +373,11 @@ function Invoke-CopilotIteration {
         }
         
         if ($Verbose) {
-            Write-Host "DEBUG: copilot exit code = $exitCode" -ForegroundColor Magenta
+            Write-Host "DEBUG: $AgentCli exit code = $exitCode" -ForegroundColor Magenta
         }
     }
     catch {
-        $output = "Error invoking copilot: $_"
+        $output = "Error invoking agent CLI: $_"
         $exitCode = 1
     }
     
@@ -330,6 +410,16 @@ if ($initialTasks -eq 0) {
 
 Write-Host "Found $initialTasks incomplete task(s)" -ForegroundColor White
 
+$resolvedAgentBackend = Resolve-AgentBackend -ConfiguredBackend $AgentBackend -CliPath $AgentCli
+# Fail fast when the configured CLI cannot be matched to a supported invocation profile.
+if ($resolvedAgentBackend -eq "unknown") {
+    Write-Host "Unable to determine a supported agent backend for '$AgentCli'." -ForegroundColor Red
+    Write-Host "Set agent_backend to 'copilot' or 'codex' in config, or via SPECKIT_RALPH_AGENT_BACKEND." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Using agent backend: $resolvedAgentBackend ($AgentCli)" -ForegroundColor White
+
 # Iteration tracking
 $iteration = 1
 $consecutiveFailures = 0
@@ -346,10 +436,10 @@ try {
         Write-RalphHeader -Iteration $iteration -Max $MaxIterations
         Write-IterationStatus -Iteration $iteration -Status "running" -Message "Starting iteration"
         
-        # Invoke Copilot CLI with speckit.ralph.iterate agent (agent already knows to complete one work unit)
+        # Invoke the configured agent backend for one Ralph iteration
         $verboseSwitch = @{}
         if ($DetailedOutput) { $verboseSwitch['Verbose'] = $true }
-        $result = Invoke-CopilotIteration -Model $Model -Iteration $iteration -WorkDir $WorkingDirectory @verboseSwitch
+        $result = Invoke-AgentIteration -Model $Model -Iteration $iteration -WorkDir $WorkingDirectory -Backend $resolvedAgentBackend @verboseSwitch
         
         if ($DetailedOutput -or $result.ExitCode -ne 0) {
             Write-Host $result.Output

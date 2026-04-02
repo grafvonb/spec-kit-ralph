@@ -2,8 +2,8 @@
 #
 # ralph-loop.sh - Ralph loop orchestrator for autonomous implementation
 #
-# Executes GitHub Copilot CLI in a controlled loop, processing tasks from tasks.md.
-# Each iteration spawns a fresh agent context with the speckit.ralph profile.
+# Executes a supported agent CLI in a controlled loop, processing tasks from tasks.md.
+# Each iteration spawns a fresh agent context with the Ralph iteration instructions.
 #
 # The loop terminates when:
 # - Agent outputs <promise>COMPLETE</promise>
@@ -30,8 +30,12 @@ SPEC_DIR=""
 MAX_ITERATIONS=10
 MODEL="claude-sonnet-4.6"
 AGENT_CLI="copilot"
+AGENT_BACKEND="auto"
 VERBOSE=false
 WORKING_DIRECTORY=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXTENSION_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ITERATE_COMMAND_PATH="$EXTENSION_ROOT/commands/iterate.md"
 
 # Track which args were explicitly set via CLI
 FEATURE_NAME_EXPLICIT=false
@@ -40,6 +44,7 @@ SPEC_DIR_EXPLICIT=false
 MAX_ITERATIONS_EXPLICIT=false
 MODEL_EXPLICIT=false
 AGENT_CLI_EXPLICIT=false
+AGENT_BACKEND_EXPLICIT=false
 WORKING_DIRECTORY_EXPLICIT=false
 
 #endregion
@@ -78,6 +83,11 @@ while [[ $# -gt 0 ]]; do
             AGENT_CLI_EXPLICIT=true
             shift 2
             ;;
+        --agent-backend)
+            AGENT_BACKEND="$2"
+            AGENT_BACKEND_EXPLICIT=true
+            shift 2
+            ;;
         --verbose)
             VERBOSE=true
             shift
@@ -97,7 +107,7 @@ done
 # Validate required arguments
 if [[ -z "$FEATURE_NAME" || -z "$TASKS_PATH" || -z "$SPEC_DIR" ]]; then
     echo "Error: Missing required arguments" >&2
-    echo "Usage: $0 --feature-name NAME --tasks-path PATH --spec-dir DIR [--max-iterations N] [--model MODEL] [--agent-cli CLI] [--verbose]" >&2
+    echo "Usage: $0 --feature-name NAME --tasks-path PATH --spec-dir DIR [--max-iterations N] [--model MODEL] [--agent-cli CLI] [--agent-backend BACKEND] [--verbose]" >&2
     exit 1
 fi
 
@@ -139,6 +149,7 @@ load_ralph_config() {
                     model) CONFIG_MODEL="$value" ;;
                     max_iterations) CONFIG_MAX_ITERATIONS="$value" ;;
                     agent_cli) CONFIG_AGENT_CLI="$value" ;;
+                    agent_backend) CONFIG_AGENT_BACKEND="$value" ;;
                 esac
             done < "$cfg"
         fi
@@ -152,11 +163,13 @@ load_ralph_config "$REPO_ROOT"
 [[ -n "${CONFIG_MODEL:-}" ]] && [[ "$MODEL_EXPLICIT" != "true" ]] && MODEL="$CONFIG_MODEL"
 [[ -n "${CONFIG_MAX_ITERATIONS:-}" ]] && [[ "$MAX_ITERATIONS_EXPLICIT" != "true" ]] && MAX_ITERATIONS="$CONFIG_MAX_ITERATIONS"
 [[ -n "${CONFIG_AGENT_CLI:-}" ]] && [[ "$AGENT_CLI_EXPLICIT" != "true" ]] && AGENT_CLI="$CONFIG_AGENT_CLI"
+[[ -n "${CONFIG_AGENT_BACKEND:-}" ]] && [[ "$AGENT_BACKEND_EXPLICIT" != "true" ]] && AGENT_BACKEND="$CONFIG_AGENT_BACKEND"
 
 # Environment variable overrides (higher priority than config, lower than CLI args)
 [[ -n "${SPECKIT_RALPH_MODEL:-}" ]] && [[ "$MODEL_EXPLICIT" != "true" ]] && MODEL="$SPECKIT_RALPH_MODEL"
 [[ -n "${SPECKIT_RALPH_MAX_ITERATIONS:-}" ]] && [[ "$MAX_ITERATIONS_EXPLICIT" != "true" ]] && MAX_ITERATIONS="$SPECKIT_RALPH_MAX_ITERATIONS"
 [[ -n "${SPECKIT_RALPH_AGENT_CLI:-}" ]] && [[ "$AGENT_CLI_EXPLICIT" != "true" ]] && AGENT_CLI="$SPECKIT_RALPH_AGENT_CLI"
+[[ -n "${SPECKIT_RALPH_AGENT_BACKEND:-}" ]] && [[ "$AGENT_BACKEND_EXPLICIT" != "true" ]] && AGENT_BACKEND="$SPECKIT_RALPH_AGENT_BACKEND"
 
 #endregion
 
@@ -235,19 +248,91 @@ EOF
     fi
 }
 
-invoke_copilot_iteration() {
+resolve_agent_backend() {
+    local configured_backend=$1
+    local agent_cli=$2
+
+    # Allow an explicit backend override for wrapper scripts or renamed binaries.
+    if [[ -n "$configured_backend" && "$configured_backend" != "auto" ]]; then
+        echo "${configured_backend,,}"
+        return
+    fi
+
+    local cli_name
+    cli_name=$(basename "$agent_cli")
+    cli_name=${cli_name,,}
+
+    case "$cli_name" in
+        copilot) echo "copilot" ;;
+        codex) echo "codex" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+build_iteration_prompt() {
+    local prompt=$1
+
+    # Codex needs the iterate instructions inline because it does not load named agents.
+    if [[ ! -f "$ITERATE_COMMAND_PATH" ]]; then
+        echo "$prompt"
+        return
+    fi
+
+    cat <<EOF
+You are executing the speckit.ralph.iterate workflow for this repository.
+Follow the instructions below exactly.
+
+$(cat "$ITERATE_COMMAND_PATH")
+
+Runtime input for \$ARGUMENTS:
+$prompt
+EOF
+}
+
+build_agent_command() {
+    local backend=$1
+    local model=$2
+    local prompt=$3
+    local -n command_ref=$4
+
+    # Map Ralph's generic loop contract onto each supported CLI's invocation shape.
+    case "$backend" in
+        copilot)
+            command_ref=("$AGENT_CLI" --agent speckit.ralph.iterate -p "$prompt" --model "$model" --yolo -s)
+            ;;
+        codex)
+            local full_prompt
+            full_prompt=$(build_iteration_prompt "$prompt")
+            command_ref=("$AGENT_CLI" exec --full-auto --model "$model" "$full_prompt")
+            ;;
+        *)
+            echo "Error: Unsupported Ralph agent backend '$backend' for CLI '$AGENT_CLI'." >&2
+            echo "Supported backends: copilot, codex. Set --agent-backend or SPECKIT_RALPH_AGENT_BACKEND when auto-detection is insufficient." >&2
+            return 1
+            ;;
+    esac
+}
+
+invoke_agent_iteration() {
     local model=$1
     local iteration=$2
     local work_dir=$3
+    local backend=$4
 
-    # Simple prompt - the speckit.ralph agent already knows to complete one work unit
+    # Simple prompt - backend-specific wrappers provide the full Ralph instructions when needed
     local prompt="Iteration $iteration - Complete one work unit from tasks.md"
+    local command=()
 
     # Only show debug info when verbose
     if [[ "$VERBOSE" == "true" ]]; then
         echo -e "\033[35mDEBUG: Prompt = $prompt\033[0m" >&2
         echo -e "\033[35mDEBUG: WorkDir = $work_dir\033[0m" >&2
         echo -e "\033[35mDEBUG: AgentCLI = $AGENT_CLI\033[0m" >&2
+        echo -e "\033[35mDEBUG: AgentBackend = $backend\033[0m" >&2
+    fi
+
+    if ! build_agent_command "$backend" "$model" "$prompt" command; then
+        return 1
     fi
 
     # Change to working directory if specified
@@ -260,18 +345,18 @@ invoke_copilot_iteration() {
         fi
     fi
 
-    # Always stream copilot output in real-time so user can see what the agent is doing
+    # Always stream agent output in real-time so user can see what the agent is doing
     echo "" >&2
-    echo -e "\033[36m--- Copilot Agent Output ---\033[0m" >&2
+    echo -e "\033[36m--- ${backend^} Agent Output ---\033[0m" >&2
 
     local exit_code=0
     local output_lines=()
 
-    # Stream output line by line - use speckit.ralph.iterate agent
+    # Stream output line by line
     while IFS= read -r line; do
         echo "$line" >&2
         output_lines+=("$line")
-    done < <("$AGENT_CLI" --agent speckit.ralph.iterate -p "$prompt" --model "$model" --yolo -s 2>&1) || exit_code=$?
+    done < <("${command[@]}" 2>&1) || exit_code=$?
 
     echo -e "\033[36m--- End Agent Output ---\033[0m" >&2
     echo "" >&2
@@ -353,6 +438,16 @@ fi
 
 echo -e "\033[37mFound $INITIAL_TASKS incomplete task(s)\033[0m"
 
+AGENT_BACKEND_RESOLVED=$(resolve_agent_backend "$AGENT_BACKEND" "$AGENT_CLI")
+# Fail fast when the configured CLI cannot be matched to a supported invocation profile.
+if [[ "$AGENT_BACKEND_RESOLVED" == "unknown" ]]; then
+    echo -e "\033[31mUnable to determine a supported agent backend for '$AGENT_CLI'.\033[0m" >&2
+    echo -e "\033[31mSet agent_backend to 'copilot' or 'codex' in config, or via SPECKIT_RALPH_AGENT_BACKEND.\033[0m" >&2
+    exit 1
+fi
+
+echo -e "\033[37mUsing agent backend: $AGENT_BACKEND_RESOLVED ($AGENT_CLI)\033[0m"
+
 # Iteration tracking
 iteration=1
 consecutive_failures=0
@@ -364,12 +459,13 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
     print_header "$iteration" "$MAX_ITERATIONS"
     print_status "$iteration" "running" "Starting iteration"
 
-    # Invoke Copilot CLI with speckit.ralph.iterate agent
+    # Invoke the configured agent backend for one Ralph iteration
     set +e
-    output=$(invoke_copilot_iteration \
+    output=$(invoke_agent_iteration \
         "$MODEL" \
         "$iteration" \
-        "$WORKING_DIRECTORY")
+        "$WORKING_DIRECTORY" \
+        "$AGENT_BACKEND_RESOLVED")
     exit_code=$?
     set -e
 

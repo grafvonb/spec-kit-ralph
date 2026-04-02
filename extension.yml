@@ -12,8 +12,6 @@ extension:
 requires:
   speckit_version: ">=0.1.0"
   tools:
-    - name: "copilot"
-      required: true
     - name: "git"
       required: true
 
@@ -45,8 +43,10 @@ tags:
   - "automation"
   - "loop"
   - "copilot"
+  - "codex"
 
 defaults:
   model: "claude-sonnet-4.6"
   max_iterations: 10
   agent_cli: "copilot"
+  agent_backend: "auto"

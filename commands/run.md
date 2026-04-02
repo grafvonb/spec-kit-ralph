@@ -1,6 +1,6 @@
 ---
 description: "Run the ralph autonomous implementation loop"
-model: Claude Haiku 4.5 (copilot)
+model: Claude Haiku 4.5
 ---
 
 ## User Input
@@ -26,7 +26,7 @@ This command is a **thin launcher** for the ralph loop orchestrator. It validate
 
    | Check | Method | On Failure |
    |-------|--------|------------|
-   | Agent CLI installed | Run `which copilot` or `Get-Command copilot` | Print error with install instructions, STOP |
+   | Agent CLI installed | Resolve configured `agent_cli`, then run `which <agent_cli>` or `Get-Command <agent_cli>` | Print error with install instructions, STOP |
    | `tasks.md` exists | Search `specs/*/tasks.md` for current feature | Print error, suggest running `/speckit.tasks`, STOP |
    | Git repository | Run `git rev-parse --git-dir` | Print error: "Not a git repository", STOP |
    | Feature branch | Run `git branch --show-current`, verify not `main`/`master` | Print warning but continue |
@@ -46,7 +46,7 @@ This command is a **thin launcher** for the ralph loop orchestrator. It validate
 
 4. **Load configuration**:
    - Read `.specify/extensions/ralph/ralph-config.yml` if it exists
-   - Apply environment variable overrides (`SPECKIT_RALPH_MODEL`, `SPECKIT_RALPH_MAX_ITERATIONS`)
+   - Apply environment variable overrides (`SPECKIT_RALPH_MODEL`, `SPECKIT_RALPH_MAX_ITERATIONS`, `SPECKIT_RALPH_AGENT_CLI`, `SPECKIT_RALPH_AGENT_BACKEND`)
    - CLI arguments from step 1 override everything
 
 5. **Launch orchestrator script in a visible terminal**:
@@ -56,12 +56,12 @@ This command is a **thin launcher** for the ralph loop orchestrator. It validate
 
      **PowerShell**:
      ```powershell
-     & ".specify/extensions/ralph/scripts/powershell/ralph-loop.ps1" -FeatureName "{feature}" -TasksPath "{tasks_path}" -SpecDir "{spec_dir}" -MaxIterations {n} -Model "{model}" [-DetailedOutput]
+     & ".specify/extensions/ralph/scripts/powershell/ralph-loop.ps1" -FeatureName "{feature}" -TasksPath "{tasks_path}" -SpecDir "{spec_dir}" -MaxIterations {n} -Model "{model}" -AgentCli "{agent_cli}" [-DetailedOutput]
      ```
 
      **Bash**:
      ```bash
-     bash ".specify/extensions/ralph/scripts/bash/ralph-loop.sh" --feature-name "{feature}" --tasks-path "{tasks_path}" --spec-dir "{spec_dir}" --max-iterations {n} --model "{model}" [--verbose]
+     bash ".specify/extensions/ralph/scripts/bash/ralph-loop.sh" --feature-name "{feature}" --tasks-path "{tasks_path}" --spec-dir "{spec_dir}" --max-iterations {n} --model "{model}" --agent-cli "{agent_cli}" [--verbose]
      ```
 
 6. **Confirm launch and exit**:
@@ -86,6 +86,7 @@ The orchestrator script itself has its own exit codes (0 = all tasks complete, 1
 - The orchestrator script handles ALL loop logic: iteration management, termination, progress tracking
 - The script runs in a **visible terminal** so the user can watch progress in real time
 - This command uses `claude-haiku-4.5` (via frontmatter `model` field) since it only does lightweight setup work
+- `agent_backend` is an advanced override and should usually remain `auto`
 - Users can also run the scripts directly from terminal for debugging:
 
   ```bash
@@ -95,3 +96,5 @@ The orchestrator script itself has its own exit codes (0 = all tasks complete, 1
   ```powershell
   & ".specify/extensions/ralph/scripts/powershell/ralph-loop.ps1" -FeatureName "001-feature" -TasksPath "specs/001-feature/tasks.md" -SpecDir "specs/001-feature"
   ```
+
+- To use Codex instead of the default Copilot path, set `agent_cli` to `codex` in config or pass `--agent-cli "codex"` / `-AgentCli "codex"` explicitly

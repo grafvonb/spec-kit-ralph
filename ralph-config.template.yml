@@ -12,7 +12,7 @@ model: "claude-sonnet-4.6"
 # Override: --max-iterations flag, or SPECKIT_RALPH_MAX_ITERATIONS env var
 max_iterations: 10
 
-# Path to agent CLI binary
-# Default searches PATH for 'copilot'
+# Main setting: choose which agent executable Ralph should run
+# Examples: "copilot", "codex", or an absolute path to a wrapper script
 # Override: SPECKIT_RALPH_AGENT_CLI env var
 agent_cli: "copilot"

@@ -54,7 +54,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Mark each completed task by changing `[ ]` to `[x]` in tasks.md
 
 5. **Commit on work unit completion**:
-   - When ALL tasks in the current work unit are complete (`[x]`), create a commit, even if the final changes are only task tracking, progress logging, documentation, or validation updates:
+   - When ALL tasks in the current work unit are complete (`[x]`), create exactly ONE commit for that work unit, even if the final changes are only task tracking, progress logging, documentation, or validation updates.
+   - Stage `tasks.md` and `progress.md` as part of that SAME commit. Do not create a follow-up bookkeeping commit just to update iteration metadata.
+   - Do not create a second "record iteration" or "record progress" commit after the main work-unit commit.
+   - If `progress.md` would otherwise need the exact commit hash, prefer stable wording like `Recorded in Git history for this iteration` instead of creating another commit or amending only to backfill a hash.
 
      ```sh
      git add -A
@@ -69,6 +72,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 6. **Update progress log**:
    - Create or append to `FEATURE_DIR/progress.md`
    - Add any discovered patterns to `## Codebase Patterns` section at TOP of file
+   - Update `progress.md` BEFORE the main work-unit commit when the work unit is complete, so it is included in that same commit
+   - Do not amend or create an extra commit only to replace placeholder commit text
    - Use the Progress Report Format below
 
 ## Progress Report Format
@@ -83,7 +88,7 @@ APPEND to FEATURE_DIR/progress.md:
 - [x] Task ID: description
 - [x] Task ID: description
 **Tasks Remaining in Story**: [count] or "None - story complete"
-**Commit**: [commit hash if work unit completed, or "No commit - partial progress"]
+**Commit**: [commit hash, "Recorded in Git history for this iteration", or "No commit - partial progress"]
 **Files Changed**: 
 - path/to/file.ext
 **Learnings**:

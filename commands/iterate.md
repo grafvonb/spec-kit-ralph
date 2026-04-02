@@ -58,14 +58,16 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Stage `tasks.md` and `progress.md` as part of that SAME commit. Do not create a follow-up bookkeeping commit just to update iteration metadata.
    - Do not create a second "record iteration" or "record progress" commit after the main work-unit commit.
    - If `progress.md` would otherwise need the exact commit hash, prefer stable wording like `Recorded in Git history for this iteration` instead of creating another commit or amending only to backfill a hash.
+   - Use a proper Conventional Commit scope that describes the changed area or subsystem (for example `view`, `cli`, `spec`, `docs`).
+   - Do **NOT** use the feature directory name, feature ID, or git branch name as the commit scope.
 
      ```sh
      git add -A
-     git commit -m "feat(<feature-name>): <work unit title>"
+     git commit -m "<type>(<scope>): <work unit title>"
      ```
 
-   - Example: `git commit -m "feat(001-ralph-loop-implement): US-001 Initialize Ralph Command"`
-   - Example: `git commit -m "chore(001-ralph-loop-implement): complete final polish"`
+   - Example: `git commit -m "feat(view): group all-namespaces node output"`
+   - Example: `git commit -m "chore(spec): complete final polish"`
    - If only partial progress, NO commit -- let the next iteration continue
    - Before outputting `<promise>COMPLETE</promise>`, ensure there are no intended tracked changes left uncommitted for the just-finished work unit
 

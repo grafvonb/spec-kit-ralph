@@ -36,6 +36,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Read `FEATURE_DIR/progress.md` if it exists -- check the `## Codebase Patterns` section for discovered conventions
    - Read `FEATURE_DIR/tasks.md` -- understand task structure and identify next incomplete user story
    - Read `FEATURE_DIR/plan.md` for tech stack, architecture, and file structure
+   - Read `FEATURE_DIR/spec.md` when present and treat any explicit traceability metadata there as authoritative workflow context
    - **IF EXISTS**: Read `FEATURE_DIR/data-model.md` for entities and relationships
    - **IF EXISTS**: Read `FEATURE_DIR/contracts/` for API specifications
    - **IF EXISTS**: Read `FEATURE_DIR/research.md` for technical decisions and constraints
@@ -60,14 +61,20 @@ You **MUST** consider the user input before proceeding (if not empty).
    - If `progress.md` would otherwise need the exact commit hash, prefer stable wording like `Recorded in Git history for this iteration` instead of creating another commit or amending only to backfill a hash.
    - Use a proper Conventional Commit scope that describes the changed area or subsystem (for example `view`, `cli`, `spec`, `docs`).
    - Do **NOT** use the feature directory name, feature ID, or git branch name as the commit scope.
+   - Before creating the commit, inspect the active feature artifacts for explicit issue traceability metadata.
+   - Prefer a stable, persisted source such as `FEATURE_DIR/spec.md`, `FEATURE_DIR/plan.md`, or another feature artifact over chat history or branch-name guesses.
+   - If the active feature artifacts include an issue number or equivalent external work-item identifier, append `#<identifier>` as the final token of the commit subject line.
+   - Preserve the normal Conventional Commit structure and add the traceability suffix only at the end of the subject.
+   - If no explicit traceability identifier is persisted in the feature artifacts, use the normal Conventional Commit subject without any suffix.
 
      ```sh
      git add -A
-     git commit -m "<type>(<scope>): <work unit title>"
+     git commit -m "<type>(<scope>): <work unit title> #<identifier>"
      ```
 
-   - Example: `git commit -m "feat(view): group all-namespaces node output"`
-   - Example: `git commit -m "chore(spec): complete final polish"`
+   - Example with persisted traceability: `git commit -m "feat(view): group all-namespaces node output #59"`
+   - Example with persisted traceability: `git commit -m "chore(spec): complete final polish #59"`
+   - Example without persisted traceability: `git commit -m "feat(view): group all-namespaces node output"`
    - If only partial progress, NO commit -- let the next iteration continue
    - Before outputting `<promise>COMPLETE</promise>`, ensure there are no intended tracked changes left uncommitted for the just-finished work unit
 

@@ -1,6 +1,5 @@
 ---
 description: "Run the ralph autonomous implementation loop"
-model: Claude Haiku 4.5
 ---
 
 ## User Input
@@ -85,8 +84,7 @@ The orchestrator script itself has its own exit codes (0 = all tasks complete, 1
 - This command is a **fire-and-forget launcher** — it validates, configures, launches, and exits
 - The orchestrator script handles ALL loop logic: iteration management, termination, progress tracking
 - The script runs in a **visible terminal** so the user can watch progress in real time
-- This command uses `claude-haiku-4.5` (via frontmatter `model` field) since it only does lightweight setup work
-- `agent_backend` is an advanced override and should usually remain `auto`
+- This command uses whatever model is active in the current session since it only does lightweight setup work
 - Users can also run the scripts directly from terminal for debugging:
 
   ```bash

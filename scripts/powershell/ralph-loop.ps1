@@ -223,6 +223,20 @@ function Get-IncompleteTaskCount {
     return (Get-IncompleteTasks -Path $Path).Count
 }
 
+function Test-IgnorableAgentOutputLine {
+    param([string]$Line)
+
+    # Codex may emit non-fatal startup/runtime warnings on stderr before the
+    # agent starts producing useful output. Keep this filter narrowly scoped
+    # to known noisy warnings so real agent failures still surface.
+    return (
+        $Line -like "*WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt:*" -or
+        $Line -like "*WARN codex_state::runtime: failed to open state db at *: migration 23 was previously applied but is missing in the resolved migrations*" -or
+        $Line -like "*WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back*" -or
+        $Line -like '*WARN codex_core::shell_snapshot: Failed to delete shell snapshot at *: Os { code: 2, kind: NotFound, message: "No such file or directory" }*'
+    )
+}
+
 function Initialize-ProgressFile {
     param([string]$Path, [string]$Feature)
     
@@ -356,6 +370,9 @@ function Invoke-AgentIteration {
             & $AgentCli @commandArgs 2>&1 | ForEach-Object {
                 # Stderr lines arrive as ErrorRecord objects; extract the message string
                 $line = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { $_ }
+                if (Test-IgnorableAgentOutputLine -Line $line) {
+                    return
+                }
                 Write-Host $line
                 $outputLines += $line
             }

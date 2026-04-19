@@ -89,6 +89,8 @@ section() {
 extract_functions() {
     # Extract get_incomplete_task_count
     sed -n '/^get_incomplete_task_count()/,/^}/p' "$SOURCE_SCRIPT"
+    # Extract is_ignorable_agent_output_line
+    sed -n '/^is_ignorable_agent_output_line()/,/^}/p' "$SOURCE_SCRIPT"
     # Extract initialize_progress_file
     sed -n '/^initialize_progress_file()/,/^}/p' "$SOURCE_SCRIPT"
     # Extract test_completion_signal
@@ -141,11 +143,41 @@ assert_eq "single-line output (regression #1)" "1" "$line_count"
 
 #endregion
 
+#region Tests: is_ignorable_agent_output_line
+
+section "is_ignorable_agent_output_line"
+
+assert_true "filters defaultPrompt manifest warning" \
+    is_ignorable_agent_output_line \
+    "2026-04-16T19:39:57.702566Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/tmp/plugin.json"
+
+assert_true "filters state db migration warning" \
+    is_ignorable_agent_output_line \
+    "2026-04-19T04:53:03.940369Z  WARN codex_state::runtime: failed to open state db at /Users/adam.boczek/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations"
+
+assert_true "filters rollout fallback warning" \
+    is_ignorable_agent_output_line \
+    "2026-04-19T04:53:03.963265Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back"
+
+assert_true "filters shell snapshot deletion warning" \
+    is_ignorable_agent_output_line \
+    '2026-04-19T04:53:05.067222Z  WARN codex_core::shell_snapshot: Failed to delete shell snapshot at "/Users/adam.boczek/.codex/shell_snapshots/019da415-c6fb-7d40-9860-ea76cf5d13e5.tmp-1776574383885855000": Os { code: 2, kind: NotFound, message: "No such file or directory" }'
+
+assert_false "keeps unrelated warning lines" \
+    is_ignorable_agent_output_line \
+    "2026-04-16T19:39:57.702566Z  WARN codex_core::plugins::manifest: failed to load plugin manifest"
+
+assert_false "keeps normal agent output" \
+    is_ignorable_agent_output_line \
+    "<promise>COMPLETE</promise>"
+
+#endregion
+
 #region Tests: test_completion_signal
 
 section "test_completion_signal"
 
-assert_true "detects COMPLETE signal" test_completion_signal "Some output <promise>COMPLETE</promise> more text"
+assert_false "rejects COMPLETE signal embedded in prose" test_completion_signal "Some output <promise>COMPLETE</promise> more text"
 
 assert_false "rejects output without signal" test_completion_signal "Some output without the signal"
 

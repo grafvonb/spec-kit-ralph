@@ -224,6 +224,20 @@ get_incomplete_task_count() {
     local count
     count=$(grep -c '^- \[ \]' "$path" 2>/dev/null) || true
     echo "${count:-0}"
+}
+
+is_ignorable_agent_output_line() {
+    local line="$1"
+
+    # Codex may emit non-fatal startup/runtime warnings on stderr before the
+    # agent starts producing useful output. Keep this filter narrowly scoped
+    # to known noisy warnings so real agent failures still surface.
+    [[ "$line" == *"WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt:"* ]] ||
+    [[ "$line" == *"WARN codex_state::runtime: failed to open state db at "*": migration 23 was previously applied but is missing in the resolved migrations"* ]] ||
+    [[ "$line" == *"WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back"* ]] ||
+    [[ "$line" == *"WARN codex_core::shell_snapshot: Failed to delete shell snapshot at "*': Os { code: 2, kind: NotFound, message: "No such file or directory" }' ]] ||
+    [[ "$line" == *'WARN codex_core::shell_snapshot: Failed to delete shell snapshot at "*": Os { code: 2, kind: NotFound, message: "No such file or directory" }' ]]
+}
 
 initialize_progress_file() {
     local path=$1
@@ -368,6 +382,9 @@ invoke_agent_iteration() {
 
     # Stream output line by line
     while IFS= read -r line; do
+        if is_ignorable_agent_output_line "$line"; then
+            continue
+        fi
         echo "$line" >&2
         output_lines+=("$line")
     done < <("${AGENT_COMMAND[@]}" 2>&1) || exit_code=$?

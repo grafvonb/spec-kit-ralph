@@ -110,6 +110,36 @@ Assert-Equal "mixed tasks returns 3" 3 $result
 
 #endregion
 
+#region Tests: Test-IgnorableAgentOutputLine
+
+Write-Section "Test-IgnorableAgentOutputLine"
+
+Assert-True "filters defaultPrompt manifest warning" (
+    Test-IgnorableAgentOutputLine -Line "2026-04-16T19:39:57.702566Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/tmp/plugin.json"
+)
+
+Assert-True "filters state db migration warning" (
+    Test-IgnorableAgentOutputLine -Line "2026-04-19T04:53:03.940369Z  WARN codex_state::runtime: failed to open state db at /Users/adam.boczek/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations"
+)
+
+Assert-True "filters rollout fallback warning" (
+    Test-IgnorableAgentOutputLine -Line "2026-04-19T04:53:03.963265Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back"
+)
+
+Assert-True "filters shell snapshot deletion warning" (
+    Test-IgnorableAgentOutputLine -Line '2026-04-19T04:53:05.067222Z  WARN codex_core::shell_snapshot: Failed to delete shell snapshot at "/Users/adam.boczek/.codex/shell_snapshots/019da415-c6fb-7d40-9860-ea76cf5d13e5.tmp-1776574383885855000": Os { code: 2, kind: NotFound, message: "No such file or directory" }'
+)
+
+Assert-True "keeps unrelated warning lines" (
+    -not (Test-IgnorableAgentOutputLine -Line "2026-04-16T19:39:57.702566Z  WARN codex_core::plugins::manifest: failed to load plugin manifest")
+)
+
+Assert-True "keeps normal agent output" (
+    -not (Test-IgnorableAgentOutputLine -Line "<promise>COMPLETE</promise>")
+)
+
+#endregion
+
 #region Tests: Get-IncompleteTasks
 
 Write-Section "Get-IncompleteTasks"

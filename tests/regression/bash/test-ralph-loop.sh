@@ -151,6 +151,10 @@ assert_true "filters defaultPrompt manifest warning" \
     is_ignorable_agent_output_line \
     "2026-04-16T19:39:57.702566Z  WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/tmp/plugin.json"
 
+assert_true "filters defaultPrompt manifest warning from codex_core_plugins logger" \
+    is_ignorable_agent_output_line \
+    "2026-04-22T20:16:53.964590Z  WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt: prompt must be at most 128 characters path=/tmp/plugin.json"
+
 assert_true "filters state db migration warning" \
     is_ignorable_agent_output_line \
     "2026-04-19T04:53:03.940369Z  WARN codex_state::runtime: failed to open state db at /Users/adam.boczek/.codex/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations"

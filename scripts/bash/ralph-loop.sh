@@ -233,6 +233,7 @@ is_ignorable_agent_output_line() {
     # agent starts producing useful output. Keep this filter narrowly scoped
     # to known noisy warnings so real agent failures still surface.
     [[ "$line" == *"WARN codex_core::plugins::manifest: ignoring interface.defaultPrompt:"* ]] ||
+    [[ "$line" == *"WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt:"* ]] ||
     [[ "$line" == *"WARN codex_state::runtime: failed to open state db at "*": migration 23 was previously applied but is missing in the resolved migrations"* ]] ||
     [[ "$line" == *"WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back"* ]] ||
     [[ "$line" == *"WARN codex_core::shell_snapshot: Failed to delete shell snapshot at "*': Os { code: 2, kind: NotFound, message: "No such file or directory" }' ]] ||

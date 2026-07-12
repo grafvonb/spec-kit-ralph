@@ -1,4 +1,20 @@
 {
+  "version": "0.12.11",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "codex",
+    "copilot"
+  ],
+  "integration_settings": {
+    "copilot": {
+      "script": "ps",
+      "raw_options": "--skills",
+      "parsed_options": {
+        "skills": true
+      },
+      "invoke_separator": "-"
+    }
+  },
   "integration": "codex",
-  "version": "0.7.4.dev0"
+  "default_integration": "codex"
 }

@@ -14,10 +14,36 @@
           "speckit.git.remote",
           "speckit.git.initialize",
           "speckit.git.commit"
+        ],
+        "copilot": [
+          "speckit.git.feature",
+          "speckit.git.validate",
+          "speckit.git.remote",
+          "speckit.git.initialize",
+          "speckit.git.commit"
         ]
       },
       "registered_skills": [],
       "installed_at": "2026-06-05T02:41:59.978636+00:00"
+    },
+    "ralph": {
+      "version": "1.3.0",
+      "source": "local",
+      "manifest_hash": "sha256:41628d3510eb584b7a9da389b023924b96f06696e0311fc3cef3cba22d4dda98",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "codex": [
+          "speckit.ralph.run",
+          "speckit.ralph.iterate"
+        ],
+        "copilot": [
+          "speckit.ralph.run",
+          "speckit.ralph.iterate"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-07-12T12:36:13.657210+00:00"
     }
   }
 }

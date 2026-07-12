@@ -1,0 +1,6 @@
+catalogs:
+- name: grafvonb
+  url: https://raw.githubusercontent.com/grafvonb/ai-tooling-speckit/refs/heads/main/extensions/catalog.json
+  priority: 1
+  install_allowed: true
+  description: ''

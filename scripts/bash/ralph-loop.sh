@@ -523,22 +523,29 @@ get_completed_task_ids_at_commit() {
 
 count_completed_task_ids() {
     local before_incomplete_ids=$1
-    local after_completed_ids=$2
+    local before_completed_ids=$2
+    local after_completed_ids=$3
 
     awk '
         NR == FNR {
             if ($0 != "") {
-                completed[$0] = 1
+                after_completed[$0] = 1
             }
             next
         }
-        $0 != "" && completed[$0] && !seen[$0]++ {
+        FILENAME == ARGV[2] {
+            if ($0 != "") {
+                before_completed[$0] = 1
+            }
+            next
+        }
+        $0 != "" && after_completed[$0] && !before_completed[$0] && !seen[$0]++ {
             count++
         }
         END {
             printf "%d\n", count + 0
         }
-    ' <(printf '%s\n' "$after_completed_ids") <(printf '%s\n' "$before_incomplete_ids")
+    ' <(printf '%s\n' "$after_completed_ids") <(printf '%s\n' "$before_completed_ids") <(printf '%s\n' "$before_incomplete_ids")
 }
 
 count_added_unchecked_task_ids() {
@@ -884,12 +891,13 @@ validate_iteration_commit_history() {
     local before_head=$2
     local before_task_state=$3
     local before_incomplete_ids=$4
-    local agent_exit=$5
-    local tasks_path=$6
-    local progress_path=$7
-    local memory_path=$8
-    local feature_name=${9:-}
-    local branch=${10:-}
+    local before_completed_ids=$5
+    local agent_exit=$6
+    local tasks_path=$7
+    local progress_path=$8
+    local memory_path=$9
+    local feature_name=${10:-}
+    local branch=${11:-}
     local after_head
     local after_task_state
     local tasks_relative
@@ -908,6 +916,7 @@ validate_iteration_commit_history() {
     local after_completed_ids
     local completed_existing_count
     local commit_before_incomplete_ids
+    local commit_before_completed_ids
     local commit_after_incomplete_ids
     local commit_after_completed_ids
     local commit_completed_existing_count
@@ -927,7 +936,7 @@ validate_iteration_commit_history() {
     progress_relative=$(get_repo_relative_path "$repo_root" "$progress_path")
     memory_relative=$(get_repo_relative_path "$repo_root" "$memory_path")
     after_completed_ids=$(get_completed_task_ids "$tasks_path")
-    completed_existing_count=$(count_completed_task_ids "$before_incomplete_ids" "$after_completed_ids")
+    completed_existing_count=$(count_completed_task_ids "$before_incomplete_ids" "$before_completed_ids" "$after_completed_ids")
 
     if [[ "$before_head" == "$after_head" ]]; then
         # Option 1: a validated work unit (task, task group, or story) must be
@@ -950,6 +959,7 @@ validate_iteration_commit_history() {
         }
 
         commit_before_incomplete_ids=$before_incomplete_ids
+        commit_before_completed_ids=$before_completed_ids
         while IFS= read -r commit; do
             [[ -z "$commit" ]] && continue
             if ! commit_after_incomplete_ids=$(get_incomplete_task_ids_at_commit "$repo_root" "$commit" "$tasks_relative"); then
@@ -959,10 +969,11 @@ validate_iteration_commit_history() {
             if ! commit_after_completed_ids=$(get_completed_task_ids_at_commit "$repo_root" "$commit" "$tasks_relative"); then
                 commit_after_completed_ids=""
             fi
-            commit_completed_existing_count=$(count_completed_task_ids "$commit_before_incomplete_ids" "$commit_after_completed_ids")
+            commit_completed_existing_count=$(count_completed_task_ids "$commit_before_incomplete_ids" "$commit_before_completed_ids" "$commit_after_completed_ids")
             paths=$(git -C "$repo_root" diff-tree --root --no-commit-id --name-only -r "$commit" 2>/dev/null) || {
                 violations+=("coordinated-commit-invalid: cannot inspect commit $commit")
                 commit_before_incomplete_ids=$commit_after_incomplete_ids
+                commit_before_completed_ids=$commit_after_completed_ids
                 continue
             }
             has_tasks=false
@@ -1001,6 +1012,7 @@ validate_iteration_commit_history() {
                 fi
             fi
             commit_before_incomplete_ids=$commit_after_incomplete_ids
+            commit_before_completed_ids=$commit_after_completed_ids
         done <<< "$commits"
     fi
 
@@ -1550,7 +1562,8 @@ fatal_failure=false
 LAST_POSTCONDITION_DEFECTS=""
 repair_head_before=""
 repair_task_state_before=""
-repair_tasks_before=""
+repair_incomplete_ids_before=""
+repair_completed_ids_before=""
 
 while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUPTED" == "false" && "$circuit_breaker" == "false" && "$fatal_failure" == "false" ]]; do
     print_header "$iteration" "$MAX_ITERATIONS"
@@ -1568,13 +1581,15 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
     iteration_task_state_before=$(get_task_state_snapshot "$TASKS_PATH")
     iteration_tasks_before=$(get_incomplete_task_count "$TASKS_PATH")
     iteration_incomplete_ids_before=$(get_incomplete_task_ids "$TASKS_PATH")
+    iteration_completed_ids_before=$(get_completed_task_ids "$TASKS_PATH")
     validation_head_before="${repair_head_before:-$iteration_head_before}"
     validation_task_state_before="${repair_task_state_before:-$iteration_task_state_before}"
     if [[ -n "$repair_head_before" ]]; then
-        validation_tasks_relative=$(get_repo_relative_path "$REPO_ROOT" "$TASKS_PATH")
-        validation_incomplete_ids_before=$(get_incomplete_task_ids_at_commit "$REPO_ROOT" "$validation_head_before" "$validation_tasks_relative" 2>/dev/null || true)
+        validation_incomplete_ids_before=$repair_incomplete_ids_before
+        validation_completed_ids_before=$repair_completed_ids_before
     else
         validation_incomplete_ids_before=$iteration_incomplete_ids_before
+        validation_completed_ids_before=$iteration_completed_ids_before
     fi
 
     # Invoke configured agent CLI with speckit.ralph.iterate behavior
@@ -1589,7 +1604,7 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
     iteration_tasks_after=$(get_incomplete_task_count "$TASKS_PATH")
     iteration_incomplete_ids_after=$(get_incomplete_task_ids "$TASKS_PATH")
     iteration_completed_ids_after=$(get_completed_task_ids "$TASKS_PATH")
-    iteration_completed_count=$(count_completed_task_ids "$validation_incomplete_ids_before" "$iteration_completed_ids_after")
+    iteration_completed_count=$(count_completed_task_ids "$validation_incomplete_ids_before" "$validation_completed_ids_before" "$iteration_completed_ids_after")
     iteration_added_unchecked_count=$(count_added_unchecked_task_ids "$validation_incomplete_ids_before" "$iteration_incomplete_ids_after")
     commit_postconditions=0
     commit_postcondition_output=""
@@ -1599,6 +1614,7 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
         "$validation_head_before" \
         "$validation_task_state_before" \
         "$validation_incomplete_ids_before" \
+        "$validation_completed_ids_before" \
         "$exit_code" \
         "$TASKS_PATH" \
         "$PROGRESS_PATH" \
@@ -1623,7 +1639,8 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
             LAST_POSTCONDITION_DEFECTS="$commit_postcondition_output"
             repair_head_before="${repair_head_before:-$iteration_head_before}"
             repair_task_state_before="${repair_task_state_before:-$iteration_task_state_before}"
-            repair_tasks_before="${repair_tasks_before:-$iteration_tasks_before}"
+            repair_incomplete_ids_before="${repair_incomplete_ids_before:-$iteration_incomplete_ids_before}"
+            repair_completed_ids_before="${repair_completed_ids_before:-$iteration_completed_ids_before}"
             ((iteration++))
             continue
         fi
@@ -1650,7 +1667,8 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
             LAST_POSTCONDITION_DEFECTS="$commit_postcondition_output"
             repair_head_before="${repair_head_before:-$iteration_head_before}"
             repair_task_state_before="${repair_task_state_before:-$iteration_task_state_before}"
-            repair_tasks_before="${repair_tasks_before:-$iteration_tasks_before}"
+            repair_incomplete_ids_before="${repair_incomplete_ids_before:-$iteration_incomplete_ids_before}"
+            repair_completed_ids_before="${repair_completed_ids_before:-$iteration_completed_ids_before}"
             ((iteration++))
             continue
         fi
@@ -1662,7 +1680,8 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
     LAST_POSTCONDITION_DEFECTS=""
     repair_head_before=""
     repair_task_state_before=""
-    repair_tasks_before=""
+    repair_incomplete_ids_before=""
+    repair_completed_ids_before=""
 
     if [[ $exit_code -ne 0 ]] && is_agent_resolution_failure "$output"; then
         print_status "$iteration" "failure" "Agent command unavailable"

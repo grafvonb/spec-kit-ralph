@@ -553,6 +553,37 @@ Assert-True "add-only task churn is rejected" (-not $taskAddValidation.IsValid)
 Assert-True "add-only task churn reports failed/no-work HEAD advance" (($taskAddValidation.Defects | Where-Object { $_ -like 'failed-iteration-advanced-head:*' }).Count -gt 0)
 Remove-Item $taskAddRepo.Root -Recurse -Force
 
+# A stale checked duplicate cannot satisfy progress for an unchecked duplicate
+# with the same task ID.
+$duplicateStaleRepo = New-TransactionTestRepository -Name "ralph-duplicate-stale-completion"
+Set-Content -Path $duplicateStaleRepo.TasksPath -Value @(
+    "- [x] T001 Stale completed duplicate"
+    "- [ ] T001 Open duplicate"
+    "- [ ] T002 Open task"
+) -Encoding UTF8
+Invoke-TestGit -Repository $duplicateStaleRepo.Root -Arguments @("add", "specs/test-feature/tasks.md") | Out-Null
+Invoke-TestGit -Repository $duplicateStaleRepo.Root -Arguments @("commit", "-q", "-m", "test: prepare duplicate stale completion") | Out-Null
+$duplicateStaleBefore = New-RalphIterationSnapshot -RepoRoot $duplicateStaleRepo.Root -TasksPath $duplicateStaleRepo.TasksPath
+Set-Content -Path $duplicateStaleRepo.TasksPath -Value @(
+    "- [x] T001 Stale completed duplicate"
+    "- [ ] T001 Open duplicate"
+    "- [ ] T002 Open task"
+    "- [ ] T003 Add-only duplicate follow-up"
+) -Encoding UTF8
+Add-Content -Path $duplicateStaleRepo.MemoryPath -Value "`n- Duplicate stale completion should not count." -Encoding UTF8
+Add-Content -Path $duplicateStaleRepo.ProgressPath -Value "`nDuplicate stale completion should not count." -Encoding UTF8
+Invoke-TestGit -Repository $duplicateStaleRepo.Root -Arguments @("add", "specs/test-feature/tasks.md", "specs/test-feature/ralph-memory.md", "specs/test-feature/progress.md") | Out-Null
+Invoke-TestGit -Repository $duplicateStaleRepo.Root -Arguments @("commit", "-q", "-m", "chore: duplicate stale add-only churn") | Out-Null
+$duplicateStaleValidation = Test-RalphIterationPostconditions `
+    -BeforeSnapshot $duplicateStaleBefore `
+    -RepoRoot $duplicateStaleRepo.Root `
+    -TasksPath $duplicateStaleRepo.TasksPath `
+    -SpecDir $duplicateStaleRepo.SpecDir `
+    -AgentExitCode 0
+Assert-True "duplicate stale checked task is rejected" (-not $duplicateStaleValidation.IsValid)
+Assert-True "duplicate stale checked task is not counted as progress" (($duplicateStaleValidation.Defects | Where-Object { $_ -like 'failed-iteration-advanced-head:*' }).Count -gt 0)
+Remove-Item $duplicateStaleRepo.Root -Recurse -Force
+
 # An earlier state-only checkpoint cannot borrow task advancement from a later
 # commit in the same iteration range.
 $multiCommitRepo = New-TransactionTestRepository -Name "ralph-multi-commit-review"

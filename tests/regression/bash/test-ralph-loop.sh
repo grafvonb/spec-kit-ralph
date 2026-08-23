@@ -586,6 +586,7 @@ git -C "$TMP_COMMIT_REPO" commit -qm "initial"
 
 before_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 before_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+before_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 before_count=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' 'substantive one' >> "$TMP_COMMIT_REPO/source.txt"
 sed -i.bak 's/- \[ \] T001/- [x] T001/' "$TMP_COMMIT_SPEC/tasks.md"
@@ -595,22 +596,24 @@ printf '%s\n' 'iteration one' >> "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" add .
 git -C "$TMP_COMMIT_REPO" commit -qm "coordinated work"
 after_count=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
-assert_true "accepts substantive commit containing all state artifacts" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$before_head" "$before_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
+assert_true "accepts substantive commit containing all state artifacts" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$before_head" "$before_state" "$before_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
 
 # A failed attempt may retain memory and audit changes, but must leave tasks and
 # HEAD untouched so the next substantive transaction can include the records.
 failed_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 failed_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+failed_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 failed_count=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' '- failed approach retained' >> "$TMP_COMMIT_SPEC/ralph-memory.md"
 printf '%s\n' 'failed iteration retained' >> "$TMP_COMMIT_SPEC/progress.md"
-assert_true "accepts failed-attempt retention without HEAD advance" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$failed_head" "$failed_state" 7 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
+assert_true "accepts failed-attempt retention without HEAD advance" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$failed_head" "$failed_state" "$failed_ids" 7 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
 assert_eq "failed attempt leaves HEAD unchanged" "$failed_head" "$(get_git_head_snapshot "$TMP_COMMIT_REPO")"
 assert_true "failed attempt retains memory change" grep -q 'failed approach retained' "$TMP_COMMIT_SPEC/ralph-memory.md"
 assert_true "failed attempt retains audit change" grep -q 'failed iteration retained' "$TMP_COMMIT_SPEC/progress.md"
 
 followup_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 followup_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+followup_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 followup_before=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' 'substantive two' >> "$TMP_COMMIT_REPO/source.txt"
 sed -i.bak 's/- \[ \] T002/- [x] T002/' "$TMP_COMMIT_SPEC/tasks.md"
@@ -618,7 +621,7 @@ rm -f "$TMP_COMMIT_SPEC/tasks.md.bak"
 git -C "$TMP_COMMIT_REPO" add .
 git -C "$TMP_COMMIT_REPO" commit -qm "follow-up coordinated work"
 followup_after=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
-assert_true "accepts later substantive inclusion of retained records" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$followup_head" "$followup_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
+assert_true "accepts later substantive inclusion of retained records" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$followup_head" "$followup_state" "$followup_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
 followup_paths=$(git -C "$TMP_COMMIT_REPO" show --pretty=format: --name-only HEAD)
 assert_true "follow-up commit contains retained memory" grep -Fxq 'specs/test-feature/ralph-memory.md' <<< "$followup_paths"
 assert_true "follow-up commit contains retained audit" grep -Fxq 'specs/test-feature/progress.md' <<< "$followup_paths"
@@ -627,6 +630,7 @@ assert_true "follow-up commit contains retained audit" grep -Fxq 'specs/test-fea
 # state. Task advancement distinguishes that work unit from stale bookkeeping.
 review_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 review_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+review_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 review_before=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 sed -i.bak 's/- \[ \] T003/- [x] T003/' "$TMP_COMMIT_SPEC/tasks.md"
 rm -f "$TMP_COMMIT_SPEC/tasks.md.bak"
@@ -635,7 +639,7 @@ printf '%s\n' 'review-only work unit completed' >> "$TMP_COMMIT_SPEC/progress.md
 git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/ralph-memory.md" "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "review-only coordinated work"
 review_after=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
-assert_true "accepts coordinated state-only commit when task state advances" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$review_head" "$review_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
+assert_true "accepts coordinated state-only commit when task state advances" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$review_head" "$review_state" "$review_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
 
 # Completing existing tasks while adding follow-up tasks is valid progress even
 # when the net number of unchecked tasks increases.
@@ -644,6 +648,7 @@ git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "prepare task expansion"
 expansion_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 expansion_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+expansion_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 expansion_before=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' 'substantive expansion inventory' >> "$TMP_COMMIT_REPO/source.txt"
 sed -i.bak 's/- \[ \] T004/- [x] T004/' "$TMP_COMMIT_SPEC/tasks.md"
@@ -656,7 +661,7 @@ git -C "$TMP_COMMIT_REPO" add .
 git -C "$TMP_COMMIT_REPO" commit -qm "task expansion coordinated work"
 expansion_after=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 assert_true "accepts task expansion when existing tasks complete despite increased unchecked count" test "$expansion_after" -gt "$expansion_before"
-assert_true "accepts substantive task-expansion commit" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$expansion_head" "$expansion_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
+assert_true "accepts substantive task-expansion commit" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$expansion_head" "$expansion_state" "$expansion_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
 
 # A planning/review task whose intended artifact is follow-up tasks may be
 # state-only, but it is still valid only when an existing task is checked off.
@@ -665,6 +670,7 @@ git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "prepare state-only expansion"
 state_expansion_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 state_expansion_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+state_expansion_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 state_expansion_before=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 sed -i.bak 's/- \[ \] T009/- [x] T009/' "$TMP_COMMIT_SPEC/tasks.md"
 rm -f "$TMP_COMMIT_SPEC/tasks.md.bak"
@@ -674,18 +680,19 @@ printf '%s\n' 'state-only task expansion completed' >> "$TMP_COMMIT_SPEC/progres
 git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/ralph-memory.md" "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "state-only task expansion"
 state_expansion_after=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
-assert_true "accepts state-only task expansion when an existing task completes" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$state_expansion_head" "$state_expansion_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
+assert_true "accepts state-only task expansion when an existing task completes" validate_iteration_commit_history "$TMP_COMMIT_REPO" "$state_expansion_head" "$state_expansion_state" "$state_expansion_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md"
 
 # Without task advancement, the same state-only shape is stale bookkeeping.
 bookkeeping_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 bookkeeping_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+bookkeeping_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 bookkeeping_count=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' 'bookkeeping only' >> "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "bookkeeping only"
 bookkeeping_committed_head=$(git -C "$TMP_COMMIT_REPO" rev-parse HEAD)
 set +e
-bookkeeping_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$bookkeeping_head" "$bookkeeping_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
+bookkeeping_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$bookkeeping_head" "$bookkeeping_state" "$bookkeeping_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
 bookkeeping_exit=$?
 set -e
 assert_eq "bookkeeping-only commit validation exits one" "1" "$bookkeeping_exit"
@@ -695,17 +702,39 @@ assert_eq "bookkeeping reporting does not mutate HEAD" "$bookkeeping_committed_h
 # Adding tasks without checking off existing work remains invalid task churn.
 task_add_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 task_add_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+task_add_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 task_add_count=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' '- [ ] T012 Add-only follow-up' >> "$TMP_COMMIT_SPEC/tasks.md"
 printf '%s\n' 'add-only task churn' >> "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "add-only task churn"
 set +e
-task_add_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$task_add_head" "$task_add_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
+task_add_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$task_add_head" "$task_add_state" "$task_add_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
 task_add_exit=$?
 set -e
 assert_eq "add-only task churn validation exits one" "1" "$task_add_exit"
 assert_true "add-only task churn reports failed/no-work HEAD advance" grep -q '^failed-iteration-advanced-head:' <<< "$task_add_output"
+
+# A task that was already checked before the agent started cannot be counted as
+# progress just because the agent commits that pre-existing dirty task state.
+printf '%s\n' '- [ ] T013 Dirty-before-agent work' '- [ ] T014 Still-open work' >> "$TMP_COMMIT_SPEC/tasks.md"
+git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md"
+git -C "$TMP_COMMIT_REPO" commit -qm "prepare dirty pre-agent task state"
+dirty_pre_agent_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
+sed -i.bak 's/- \[ \] T013/- [x] T013/' "$TMP_COMMIT_SPEC/tasks.md"
+rm -f "$TMP_COMMIT_SPEC/tasks.md.bak"
+dirty_pre_agent_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+dirty_pre_agent_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
+printf '%s\n' '- pre-existing dirty task state committed' >> "$TMP_COMMIT_SPEC/ralph-memory.md"
+printf '%s\n' 'pre-existing dirty task state committed' >> "$TMP_COMMIT_SPEC/progress.md"
+git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/ralph-memory.md" "$TMP_COMMIT_SPEC/progress.md"
+git -C "$TMP_COMMIT_REPO" commit -qm "commit pre-existing dirty task state"
+set +e
+dirty_pre_agent_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$dirty_pre_agent_head" "$dirty_pre_agent_state" "$dirty_pre_agent_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
+dirty_pre_agent_exit=$?
+set -e
+assert_eq "pre-existing dirty task completion validation exits one" "1" "$dirty_pre_agent_exit"
+assert_true "pre-existing dirty task completion is not counted as progress" grep -q '^failed-iteration-advanced-head:' <<< "$dirty_pre_agent_output"
 
 # An earlier state-only checkpoint cannot borrow task advancement from a later
 # commit in the same iteration range.
@@ -714,6 +743,7 @@ git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md"
 git -C "$TMP_COMMIT_REPO" commit -qm "prepare multi-commit review"
 multi_head=$(get_git_head_snapshot "$TMP_COMMIT_REPO")
 multi_state=$(get_task_state_snapshot "$TMP_COMMIT_SPEC/tasks.md")
+multi_ids=$(get_incomplete_task_ids "$TMP_COMMIT_SPEC/tasks.md")
 multi_before=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 printf '%s\n' '' >> "$TMP_COMMIT_SPEC/tasks.md"
 printf '%s\n' '- premature checkpoint' >> "$TMP_COMMIT_SPEC/ralph-memory.md"
@@ -729,7 +759,7 @@ git -C "$TMP_COMMIT_REPO" add "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/ralp
 git -C "$TMP_COMMIT_REPO" commit -qm "complete multi-commit review"
 multi_after=$(get_incomplete_task_count "$TMP_COMMIT_SPEC/tasks.md")
 set +e
-multi_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$multi_head" "$multi_state" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
+multi_output=$(validate_iteration_commit_history "$TMP_COMMIT_REPO" "$multi_head" "$multi_state" "$multi_ids" 0 "$TMP_COMMIT_SPEC/tasks.md" "$TMP_COMMIT_SPEC/progress.md" "$TMP_COMMIT_SPEC/ralph-memory.md" 2>&1)
 multi_exit=$?
 set -e
 assert_eq "multi-commit state-only checkpoint validation exits one" "1" "$multi_exit"
@@ -762,6 +792,7 @@ git -C "$TMP_PARTIAL_REPO" commit -qm "initial"
 # T005: partial subset committed as a coordinated work unit is accepted.
 partial_head=$(get_git_head_snapshot "$TMP_PARTIAL_REPO")
 partial_state=$(get_task_state_snapshot "$TMP_PARTIAL_SPEC/tasks.md")
+partial_ids=$(get_incomplete_task_ids "$TMP_PARTIAL_SPEC/tasks.md")
 partial_before=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
 printf '%s\n' 'partial subset work' >> "$TMP_PARTIAL_REPO/source.txt"
 sed -i.bak 's/- \[ \] T001/- [x] T001/' "$TMP_PARTIAL_SPEC/tasks.md"
@@ -771,7 +802,7 @@ printf '%s\n' 'partial subset committed' >> "$TMP_PARTIAL_SPEC/progress.md"
 git -C "$TMP_PARTIAL_REPO" add .
 git -C "$TMP_PARTIAL_REPO" commit -qm "feat: complete first task of story"
 partial_after=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
-assert_true "accepts partial-story subset committed as coordinated work unit" validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$partial_head" "$partial_state" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md"
+assert_true "accepts partial-story subset committed as coordinated work unit" validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$partial_head" "$partial_state" "$partial_ids" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md"
 assert_true "partial subset leaves later tasks incomplete" test "$partial_after" -eq 2
 assert_true "partial subset advances HEAD" test "$partial_head" != "$(get_git_head_snapshot "$TMP_PARTIAL_REPO")"
 
@@ -779,6 +810,7 @@ assert_true "partial subset advances HEAD" test "$partial_head" != "$(get_git_he
 # iteration commits its own validated subset and the story finishes across commits.
 second_head=$(get_git_head_snapshot "$TMP_PARTIAL_REPO")
 second_state=$(get_task_state_snapshot "$TMP_PARTIAL_SPEC/tasks.md")
+second_ids=$(get_incomplete_task_ids "$TMP_PARTIAL_SPEC/tasks.md")
 second_before=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
 printf '%s\n' 'second subset work' >> "$TMP_PARTIAL_REPO/source.txt"
 sed -i.bak 's/- \[ \] T002/- [x] T002/' "$TMP_PARTIAL_SPEC/tasks.md"
@@ -788,10 +820,11 @@ printf '%s\n' 'second subset committed' >> "$TMP_PARTIAL_SPEC/progress.md"
 git -C "$TMP_PARTIAL_REPO" add .
 git -C "$TMP_PARTIAL_REPO" commit -qm "feat: complete second task of story"
 second_after=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
-assert_true "accepts second sequential partial-story work unit" validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$second_head" "$second_state" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md"
+assert_true "accepts second sequential partial-story work unit" validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$second_head" "$second_state" "$second_ids" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md"
 
 third_head=$(get_git_head_snapshot "$TMP_PARTIAL_REPO")
 third_state=$(get_task_state_snapshot "$TMP_PARTIAL_SPEC/tasks.md")
+third_ids=$(get_incomplete_task_ids "$TMP_PARTIAL_SPEC/tasks.md")
 third_before=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
 printf '%s\n' 'third subset work' >> "$TMP_PARTIAL_REPO/source.txt"
 sed -i.bak 's/- \[ \] T003/- [x] T003/' "$TMP_PARTIAL_SPEC/tasks.md"
@@ -801,7 +834,7 @@ printf '%s\n' 'third subset committed' >> "$TMP_PARTIAL_SPEC/progress.md"
 git -C "$TMP_PARTIAL_REPO" add .
 git -C "$TMP_PARTIAL_REPO" commit -qm "feat: complete final task of story"
 third_after=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
-assert_true "accepts final sequential partial-story work unit" validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$third_head" "$third_state" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md"
+assert_true "accepts final sequential partial-story work unit" validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$third_head" "$third_state" "$third_ids" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md"
 assert_true "story completed across sequential coordinated commits" test "$third_after" -eq 0
 
 # T010: a validated subset that reduces the incomplete count without committing
@@ -812,11 +845,12 @@ printf '%s\n' '- [ ] T004 Later work' >> "$TMP_PARTIAL_SPEC/tasks.md"
 git -C "$TMP_PARTIAL_REPO" add . && git -C "$TMP_PARTIAL_REPO" commit -qm "chore: queue later task"
 reset_head=$(get_git_head_snapshot "$TMP_PARTIAL_REPO")
 reset_state=$(get_task_state_snapshot "$TMP_PARTIAL_SPEC/tasks.md")
+reset_ids=$(get_incomplete_task_ids "$TMP_PARTIAL_SPEC/tasks.md")
 reset_before=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
 sed -i.bak 's/- \[ \] T004/- [x] T004/' "$TMP_PARTIAL_SPEC/tasks.md"
 rm -f "$TMP_PARTIAL_SPEC/tasks.md.bak"
 reset_after=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
-reject_output=$(validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$reset_head" "$reset_state" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md" 2>&1) && reject_status=0 || reject_status=$?
+reject_output=$(validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$reset_head" "$reset_state" "$reset_ids" 0 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md" 2>&1) && reject_status=0 || reject_status=$?
 assert_true "rejects validated subset left uncommitted with unchanged HEAD" test "$reject_status" -ne 0
 assert_true "uncommitted subset reports coordinated-commit-invalid" grep -q 'coordinated-commit-invalid' <<< "$reject_output"
 git -C "$TMP_PARTIAL_REPO" checkout -q -- "$TMP_PARTIAL_SPEC/tasks.md"
@@ -825,11 +859,12 @@ git -C "$TMP_PARTIAL_REPO" checkout -q -- "$TMP_PARTIAL_SPEC/tasks.md"
 # marks no task complete and is rejected as failed-iteration-task-state.
 failed_state_head=$(get_git_head_snapshot "$TMP_PARTIAL_REPO")
 failed_state_snapshot=$(get_task_state_snapshot "$TMP_PARTIAL_SPEC/tasks.md")
+failed_state_ids=$(get_incomplete_task_ids "$TMP_PARTIAL_SPEC/tasks.md")
 failed_state_before=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
 sed -i.bak 's/- \[ \] T004 Later work/- [ ] T004 Later work reworded/' "$TMP_PARTIAL_SPEC/tasks.md"
 rm -f "$TMP_PARTIAL_SPEC/tasks.md.bak"
 failed_state_after=$(get_incomplete_task_count "$TMP_PARTIAL_SPEC/tasks.md")
-failed_state_output=$(validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$failed_state_head" "$failed_state_snapshot" 7 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md" 2>&1) && failed_state_status=0 || failed_state_status=$?
+failed_state_output=$(validate_iteration_commit_history "$TMP_PARTIAL_REPO" "$failed_state_head" "$failed_state_snapshot" "$failed_state_ids" 7 "$TMP_PARTIAL_SPEC/tasks.md" "$TMP_PARTIAL_SPEC/progress.md" "$TMP_PARTIAL_SPEC/ralph-memory.md" 2>&1) && failed_state_status=0 || failed_state_status=$?
 assert_true "rejects failed iteration that edits tasks without reducing count" test "$failed_state_status" -ne 0
 assert_true "failed iteration reports failed-iteration-task-state" grep -q 'failed-iteration-task-state' <<< "$failed_state_output"
 

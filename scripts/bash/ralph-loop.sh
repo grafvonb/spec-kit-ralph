@@ -883,12 +883,13 @@ validate_iteration_commit_history() {
     local repo_root=$1
     local before_head=$2
     local before_task_state=$3
-    local agent_exit=$4
-    local tasks_path=$5
-    local progress_path=$6
-    local memory_path=$7
-    local feature_name=${8:-}
-    local branch=${9:-}
+    local before_incomplete_ids=$4
+    local agent_exit=$5
+    local tasks_path=$6
+    local progress_path=$7
+    local memory_path=$8
+    local feature_name=${9:-}
+    local branch=${10:-}
     local after_head
     local after_task_state
     local tasks_relative
@@ -904,7 +905,6 @@ validate_iteration_commit_history() {
     local has_substantive
     local subject
     local subject_output
-    local before_incomplete_ids
     local after_completed_ids
     local completed_existing_count
     local commit_before_incomplete_ids
@@ -926,7 +926,6 @@ validate_iteration_commit_history() {
     tasks_relative=$(get_repo_relative_path "$repo_root" "$tasks_path")
     progress_relative=$(get_repo_relative_path "$repo_root" "$progress_path")
     memory_relative=$(get_repo_relative_path "$repo_root" "$memory_path")
-    before_incomplete_ids=$(get_incomplete_task_ids_at_commit "$repo_root" "$before_head" "$tasks_relative" 2>/dev/null || true)
     after_completed_ids=$(get_completed_task_ids "$tasks_path")
     completed_existing_count=$(count_completed_task_ids "$before_incomplete_ids" "$after_completed_ids")
 
@@ -1599,6 +1598,7 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
         "$REPO_ROOT" \
         "$validation_head_before" \
         "$validation_task_state_before" \
+        "$validation_incomplete_ids_before" \
         "$exit_code" \
         "$TASKS_PATH" \
         "$PROGRESS_PATH" \

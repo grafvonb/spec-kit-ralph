@@ -883,14 +883,12 @@ validate_iteration_commit_history() {
     local repo_root=$1
     local before_head=$2
     local before_task_state=$3
-    local before_incomplete=$4
-    local after_incomplete=$5
-    local agent_exit=$6
-    local tasks_path=$7
-    local progress_path=$8
-    local memory_path=$9
-    local feature_name=${10:-}
-    local branch=${11:-}
+    local agent_exit=$4
+    local tasks_path=$5
+    local progress_path=$6
+    local memory_path=$7
+    local feature_name=${8:-}
+    local branch=${9:-}
     local after_head
     local after_task_state
     local tasks_relative
@@ -907,7 +905,6 @@ validate_iteration_commit_history() {
     local subject
     local subject_output
     local before_incomplete_ids
-    local after_incomplete_ids
     local after_completed_ids
     local completed_existing_count
     local commit_before_incomplete_ids
@@ -930,14 +927,13 @@ validate_iteration_commit_history() {
     progress_relative=$(get_repo_relative_path "$repo_root" "$progress_path")
     memory_relative=$(get_repo_relative_path "$repo_root" "$memory_path")
     before_incomplete_ids=$(get_incomplete_task_ids_at_commit "$repo_root" "$before_head" "$tasks_relative" 2>/dev/null || true)
-    after_incomplete_ids=$(get_incomplete_task_ids "$tasks_path")
     after_completed_ids=$(get_completed_task_ids "$tasks_path")
     completed_existing_count=$(count_completed_task_ids "$before_incomplete_ids" "$after_completed_ids")
 
     if [[ "$before_head" == "$after_head" ]]; then
         # Option 1: a validated work unit (task, task group, or story) must be
         # committed in the same iteration that marks it complete. An unchanged
-        # HEAD with a reduced incomplete count means completion was stranded
+        # HEAD with a checked existing task means completion was stranded
         # uncommitted, which is rejected.
         if [[ "$completed_existing_count" -gt 0 ]]; then
             violations+=("coordinated-commit-invalid: completed task state was not included in a new work-unit commit")
@@ -1575,7 +1571,6 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
     iteration_incomplete_ids_before=$(get_incomplete_task_ids "$TASKS_PATH")
     validation_head_before="${repair_head_before:-$iteration_head_before}"
     validation_task_state_before="${repair_task_state_before:-$iteration_task_state_before}"
-    validation_tasks_before="${repair_tasks_before:-$iteration_tasks_before}"
     if [[ -n "$repair_head_before" ]]; then
         validation_tasks_relative=$(get_repo_relative_path "$REPO_ROOT" "$TASKS_PATH")
         validation_incomplete_ids_before=$(get_incomplete_task_ids_at_commit "$REPO_ROOT" "$validation_head_before" "$validation_tasks_relative" 2>/dev/null || true)
@@ -1604,8 +1599,6 @@ while [[ $iteration -le $MAX_ITERATIONS && "$completed" == "false" && "$INTERRUP
         "$REPO_ROOT" \
         "$validation_head_before" \
         "$validation_task_state_before" \
-        "$validation_tasks_before" \
-        "$iteration_tasks_after" \
         "$exit_code" \
         "$TASKS_PATH" \
         "$PROGRESS_PATH" \

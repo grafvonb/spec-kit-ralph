@@ -791,6 +791,7 @@ function New-RalphIterationSnapshot {
 function Get-RalphCompletedExistingTaskIds {
     param(
         [string[]]$BeforeIncompleteTaskIds,
+        [string[]]$BeforeCompletedTaskIds,
         [string[]]$AfterCompletedTaskIds
     )
 
@@ -801,10 +802,17 @@ function Get-RalphCompletedExistingTaskIds {
         }
     }
 
+    $beforeCompleted = @{}
+    foreach ($taskId in @($BeforeCompletedTaskIds)) {
+        if ($taskId) {
+            $beforeCompleted[$taskId] = $true
+        }
+    }
+
     $completedExisting = New-Object System.Collections.Generic.List[string]
     $seen = @{}
     foreach ($taskId in @($BeforeIncompleteTaskIds)) {
-        if ($taskId -and $afterCompleted.ContainsKey($taskId) -and -not $seen.ContainsKey($taskId)) {
+        if ($taskId -and $afterCompleted.ContainsKey($taskId) -and -not $beforeCompleted.ContainsKey($taskId) -and -not $seen.ContainsKey($taskId)) {
             $seen[$taskId] = $true
             $completedExisting.Add($taskId)
         }
@@ -864,6 +872,7 @@ function Test-RalphIterationPostconditions {
     if (-not $BeforeSnapshot.IsGitRepository -or -not $afterSnapshot.IsGitRepository) {
         $completedTaskIds = @(Get-RalphCompletedExistingTaskIds `
             -BeforeIncompleteTaskIds $BeforeSnapshot.IncompleteTaskIds `
+            -BeforeCompletedTaskIds $BeforeSnapshot.CompletedTaskIds `
             -AfterCompletedTaskIds $afterSnapshot.CompletedTaskIds)
         $addedUncheckedTaskIds = @(Get-RalphAddedUncheckedTaskIds `
             -BeforeIncompleteTaskIds $BeforeSnapshot.IncompleteTaskIds `
@@ -882,6 +891,7 @@ function Test-RalphIterationPostconditions {
     $taskStateChanged = $BeforeSnapshot.TaskBytes -ne $afterSnapshot.TaskBytes
     $completedTaskIds = @(Get-RalphCompletedExistingTaskIds `
         -BeforeIncompleteTaskIds $BeforeSnapshot.IncompleteTaskIds `
+        -BeforeCompletedTaskIds $BeforeSnapshot.CompletedTaskIds `
         -AfterCompletedTaskIds $afterSnapshot.CompletedTaskIds)
     $addedUncheckedTaskIds = @(Get-RalphAddedUncheckedTaskIds `
         -BeforeIncompleteTaskIds $BeforeSnapshot.IncompleteTaskIds `
@@ -964,6 +974,7 @@ function Test-RalphIterationPostconditions {
     }
 
     $commitBeforeIncompleteIds = @($BeforeSnapshot.IncompleteTaskIds)
+    $commitBeforeCompletedIds = @($BeforeSnapshot.CompletedTaskIds)
     foreach ($commit in $newCommits) {
         $commitId = ([string]$commit).Trim()
         if (-not $commitId) {
@@ -996,12 +1007,14 @@ function Test-RalphIterationPostconditions {
         }
         $commitCompletedExistingIds = @(Get-RalphCompletedExistingTaskIds `
             -BeforeIncompleteTaskIds $commitBeforeIncompleteIds `
+            -BeforeCompletedTaskIds $commitBeforeCompletedIds `
             -AfterCompletedTaskIds $commitAfterCompletedIds)
 
         $changedPaths = @(& git -C $RepoRoot diff-tree --no-commit-id --name-only -r --root $commitId 2>$null | Where-Object { $_ })
         if ($LASTEXITCODE -ne 0) {
             $defects.Add("coordinated-commit-invalid: unable to inspect paths for commit $commitId")
             $commitBeforeIncompleteIds = @($commitAfterIncompleteIds)
+            $commitBeforeCompletedIds = @($commitAfterCompletedIds)
             continue
         }
 
@@ -1037,6 +1050,7 @@ function Test-RalphIterationPostconditions {
             }
         }
         $commitBeforeIncompleteIds = @($commitAfterIncompleteIds)
+        $commitBeforeCompletedIds = @($commitAfterCompletedIds)
     }
 
     if ($AgentExitCode -eq 0 -and $completedTaskIds.Count -eq 0) {
